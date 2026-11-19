@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.runtime.remember
+import app.jisr.vpn.core.ServerHealth
 import app.jisr.vpn.data.Prefs
 import app.jisr.vpn.ui.BottomBar
 import app.jisr.vpn.ui.C
@@ -69,6 +70,25 @@ private fun App() {
         message = null
         val prep: Intent? = VpnService.prepare(ctx)
         if (prep != null) vpnPermission.launch(prep) else message = VpnController.start(ctx)
+    }
+
+    // التبديل الذكي: عند فشل الاتصال جرّب أسرع سيرفر لم يُجرَّب بعد
+    var tried by remember { mutableStateOf(setOf<String>()) }
+    LaunchedEffect(VpnController.status) {
+        val st = VpnController.status
+        if (st == "connected") tried = emptySet()
+        if (st == "error" && Prefs.smartSwitch) {
+            val all = Prefs.servers
+            val used = tried + listOfNotNull(Prefs.selectedId)
+            tried = used
+            val next = ServerHealth.best(all, used) ?: all.firstOrNull { it.id !in used }
+            if (next != null) {
+                Prefs.selectedId = next.id
+                message = "تعذّر الاتصال، جرّبت تلقائياً: ${next.name}"
+                kotlinx.coroutines.delay(800)
+                message = VpnController.start(ctx) ?: message
+            }
+        }
     }
 
     LaunchedEffect(Unit) {

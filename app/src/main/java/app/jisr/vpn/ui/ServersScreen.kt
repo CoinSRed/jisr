@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,7 +33,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.jisr.vpn.core.LinkParser
+import app.jisr.vpn.core.ServerHealth
 import app.jisr.vpn.data.Prefs
+import kotlinx.coroutines.launch
 import app.jisr.vpn.data.Server
 import java.util.UUID
 
@@ -42,6 +46,12 @@ fun ServersScreen(onPicked: () -> Unit) {
     var selected by remember { mutableStateOf(Prefs.selectedId) }
     var note by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    // اختبار تلقائي لزمن الاستجابة عند فتح الشاشة أو إضافة سيرفر
+    LaunchedEffect(servers.size) {
+        if (servers.isNotEmpty()) ServerHealth.testAll(servers)
+    }
 
     /** يضيف الروابط الصالحة فقط. يرجع رسالة خطأ أو null عند النجاح. */
     fun addLinks(links: List<String>): String? {
@@ -80,6 +90,12 @@ fun ServersScreen(onPicked: () -> Unit) {
             GlassButton("إضافة يدوياً", brick = true, modifier = Modifier.weight(1f)) { adding = true }
             GlassButton("من الحافظة", brick = false, modifier = Modifier.weight(1f)) { importFromClipboard() }
         }
+        if (servers.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            GlassButton("اختبار سرعة السيرفرات", brick = false, modifier = Modifier.fillMaxWidth()) {
+                scope.launch { ServerHealth.testAll(servers) }
+            }
+        }
         note?.let { Text(it, color = C.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
         Spacer(Modifier.height(12.dp))
 
@@ -90,6 +106,7 @@ fun ServersScreen(onPicked: () -> Unit) {
             )
         }
 
+        val bestId = ServerHealth.best(servers)?.id
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(servers, key = { it.id }) { s ->
                 val isSel = s.id == selected
@@ -109,7 +126,18 @@ fun ServersScreen(onPicked: () -> Unit) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(s.name, color = C.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                        Text(s.link.substringBefore("://").uppercase(), color = C.Muted, fontSize = 12.sp)
+                        val ms = ServerHealth.latency[s.id]
+                        val msText = when {
+                            ms == null -> ""
+                            ms > 0 -> " · ${ms}ms"
+                            else -> " · لا يرد"
+                        }
+                        val bestText = if (s.id == bestId) " · الأسرع" else ""
+                        Text(
+                            s.link.substringBefore("://").uppercase() + msText + bestText,
+                            color = if (ms != null && ms < 0) C.BrickLight else if (s.id == bestId) C.Teal else C.Muted,
+                            fontSize = 12.sp
+                        )
                     }
                     Icon(
                         Icons.Default.Delete,

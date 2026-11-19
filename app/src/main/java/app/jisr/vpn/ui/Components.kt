@@ -57,9 +57,10 @@ fun PowerIcon(color: Color, size: Int = 52) {
 fun BottomBar(selected: Int, onSelect: (Int) -> Unit) {
     Row(
         Modifier
+            .padding(horizontal = 20.dp, vertical = 10.dp)
             .fillMaxWidth()
-            .glass(0)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .glass(28)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         NavItem(Icons.Default.Home, "الرئيسية", selected == 0) { onSelect(0) }

@@ -53,8 +53,14 @@ fun GlassBackground(content: @Composable BoxScope.() -> Unit) {
     )
 }
 
-fun Modifier.glass(radius: Int = 16): Modifier =
-    this
-        .clip(RoundedCornerShape(radius.dp))
+fun Modifier.glass(radius: Int = 16): Modifier {
+    val shape = RoundedCornerShape(radius.dp)
+    return this
+        .clip(shape)
         .background(C.Glass)
-        .border(BorderStroke(1.dp, C.GlassBorder), RoundedCornerShape(radius.dp))
+        .border(
+            1.dp,
+            Brush.verticalGradient(listOf(Color(0x4DFFFFFF), Color(0x0DFFFFFF))),
+            shape
+        )
+}

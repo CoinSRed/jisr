@@ -32,6 +32,7 @@ import app.jisr.vpn.data.Prefs
 fun SettingsScreen() {
     var auto by remember { mutableStateOf(Prefs.autoConnect) }
     var dns by remember { mutableStateOf(Prefs.dns) }
+    var smart by remember { mutableStateOf(Prefs.smartSwitch) }
     val dnsOptions = listOf("1.1.1.1", "8.8.8.8", "9.9.9.9")
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -49,6 +50,21 @@ fun SettingsScreen() {
             Switch(auto) {
                 auto = it
                 Prefs.autoConnect = it
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().glass().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("التبديل الذكي", color = C.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("إذا فشل الاتصال يجرّب أسرع سيرفر ثاني تلقائياً", color = C.Muted, fontSize = 13.sp)
+            }
+            Switch(smart) {
+                smart = it
+                Prefs.smartSwitch = it
             }
         }
 

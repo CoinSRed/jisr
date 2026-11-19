@@ -45,6 +45,13 @@ object Prefs {
             p().edit().putBoolean("autoConnect", value).apply()
         }
 
+    /** التبديل التلقائي لسيرفر ثاني عند فشل الاتصال. */
+    var smartSwitch: Boolean
+        get() = p().getBoolean("smartSwitch", true)
+        set(value) {
+            p().edit().putBoolean("smartSwitch", value).apply()
+        }
+
     var dns: String
         get() = p().getString("dns", "1.1.1.1") ?: "1.1.1.1"
         set(value) {
