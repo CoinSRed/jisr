@@ -45,6 +45,12 @@ object Prefs {
             p().edit().putBoolean("autoConnect", value).apply()
         }
 
+    var askedPhonePerm: Boolean
+        get() = p().getBoolean("askedPhonePerm", false)
+        set(value) {
+            p().edit().putBoolean("askedPhonePerm", value).apply()
+        }
+
     /** التبديل التلقائي لسيرفر ثاني عند فشل الاتصال. */
     var smartSwitch: Boolean
         get() = p().getBoolean("smartSwitch", true)

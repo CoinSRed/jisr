@@ -33,7 +33,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.net.TrafficStats
+import android.os.Process
 import app.jisr.vpn.core.Diagnostics
+import app.jisr.vpn.core.LinkParser
+import app.jisr.vpn.core.NetworkInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import app.jisr.vpn.core.Finding
 import app.jisr.vpn.core.Level
 import app.jisr.vpn.core.ServerHealth
@@ -63,6 +69,53 @@ fun HomeScreen(message: String?, onToggle: () -> Unit, onOpenServers: () -> Unit
     var report by remember { mutableStateOf<List<Finding>?>(null) }
     var checking by remember { mutableStateOf(false) }
 
+    // نوع الشبكة (Wi-Fi / 4G / 5G)
+    var net by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            net = NetworkInfo.label(ctx)
+            delay(3000)
+        }
+    }
+
+    // السرعة اللحظية (حركة تطبيق جسر على الشبكة، تشمل الإضافات الداخلية للنفق)
+    var down by remember { mutableStateOf(0L) }
+    var up by remember { mutableStateOf(0L) }
+    LaunchedEffect(on) {
+        if (!on) {
+            down = 0L
+            up = 0L
+            return@LaunchedEffect
+        }
+        val uid = Process.myUid()
+        var lastRx = TrafficStats.getUidRxBytes(uid)
+        var lastTx = TrafficStats.getUidTxBytes(uid)
+        while (true) {
+            delay(1000)
+            val rx = TrafficStats.getUidRxBytes(uid)
+            val tx = TrafficStats.getUidTxBytes(uid)
+            if (rx >= 0 && lastRx >= 0) down = (rx - lastRx).coerceAtLeast(0)
+            if (tx >= 0 && lastTx >= 0) up = (tx - lastTx).coerceAtLeast(0)
+            lastRx = rx
+            lastTx = tx
+        }
+    }
+
+    // زمن الاستجابة المباشر للسيرفر المتصل
+    var liveMs by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(on, server?.id) {
+        if (!on) {
+            liveMs = null
+            return@LaunchedEffect
+        }
+        val node = server?.let { LinkParser.parse(it.link) } ?: return@LaunchedEffect
+        while (true) {
+            val ms = withContext(Dispatchers.IO) { Diagnostics.tcpLatency(node.host, node.port, 2500) }
+            liveMs = ms ?: -1L
+            delay(5000)
+        }
+    }
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -76,12 +129,23 @@ fun HomeScreen(message: String?, onToggle: () -> Unit, onOpenServers: () -> Unit
                 Box(Modifier.size(10.dp).clip(CircleShape).background(if (on) C.Teal else C.Brick))
                 Text("جسر", color = C.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             }
-            Text(
-                if (on) "محمي" else "غير محمي",
-                color = if (on) C.Teal else C.Muted,
-                fontSize = 13.sp,
-                modifier = Modifier.glass(99).padding(horizontal = 14.dp, vertical = 6.dp)
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (net.isNotEmpty()) {
+                    Text(
+                        net,
+                        color = C.Text,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.glass(99).padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                Text(
+                    if (on) "محمي" else "غير محمي",
+                    color = if (on) C.Teal else C.Muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.glass(99).padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
         }
 
         Spacer(Modifier.height(20.dp))
@@ -109,6 +173,24 @@ fun HomeScreen(message: String?, onToggle: () -> Unit, onOpenServers: () -> Unit
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 4.dp)
             )
+        }
+
+        if (on) {
+            Spacer(Modifier.height(18.dp))
+            val l = liveMs
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatTile(Modifier.weight(1f), "تنزيل", fmtSpeed(down), C.Teal)
+                StatTile(Modifier.weight(1f), "رفع", fmtSpeed(up), C.BrickLight)
+                StatTile(
+                    Modifier.weight(1f), "الاستجابة",
+                    when {
+                        l == null -> "…"
+                        l > 0 -> "${l}ms"
+                        else -> "—"
+                    },
+                    C.Text
+                )
+            }
         }
 
         Spacer(Modifier.height(22.dp))
@@ -179,5 +261,22 @@ fun HomeScreen(message: String?, onToggle: () -> Unit, onOpenServers: () -> Unit
             }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+private fun fmtSpeed(bytesPerSec: Long): String = when {
+    bytesPerSec >= 1_048_576 -> "%.1f MB/s".format(bytesPerSec / 1_048_576.0)
+    bytesPerSec >= 1024 -> "${bytesPerSec / 1024} KB/s"
+    else -> "$bytesPerSec B/s"
+}
+
+@Composable
+private fun StatTile(modifier: Modifier, label: String, value: String, color: Color) {
+    Column(
+        modifier.glass().padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(label, color = C.Muted, fontSize = 12.sp)
+        Text(value, color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
     }
 }
