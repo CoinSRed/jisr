@@ -41,38 +41,51 @@ fun ServersScreen(onPicked: () -> Unit) {
     var servers by remember { mutableStateOf(Prefs.servers) }
     var selected by remember { mutableStateOf(Prefs.selectedId) }
     var note by remember { mutableStateOf<String?>(null) }
+    var adding by remember { mutableStateOf(false) }
 
-    fun importFromClipboard() {
-        val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString().orEmpty()
-        // يقبل رابطاً واحداً أو عدة روابط، كل رابط في سطر
-        val links = text.lines().map { it.trim() }.filter { it.isNotBlank() }
+    /** يضيف الروابط الصالحة فقط. يرجع رسالة خطأ أو null عند النجاح. */
+    fun addLinks(links: List<String>): String? {
         val added = links.mapNotNull { l ->
             LinkParser.parse(l)?.let { Server(UUID.randomUUID().toString(), it.name, l) }
         }
         if (added.isEmpty()) {
-            note = "ما لقيت رابط صالح في الحافظة. انسخ رابط vmess:// أو vless:// أو trojan:// أولاً"
-        } else {
-            servers = servers + added
-            Prefs.servers = servers
-            if (selected == null) {
-                selected = added.first().id
-                Prefs.selectedId = selected
-            }
-            note = "تمت إضافة ${added.size} سيرفر"
+            return "ما لقيت رابط صالح. الصيغ المدعومة: vmess:// و vless:// و trojan://"
         }
+        servers = servers + added
+        Prefs.servers = servers
+        if (selected == null) {
+            selected = added.first().id
+            Prefs.selectedId = selected
+        }
+        note = "تمت إضافة ${added.size} سيرفر"
+        return null
+    }
+
+    fun importFromClipboard() {
+        val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString().orEmpty()
+        val links = text.lines().map { it.trim() }.filter { it.isNotBlank() }
+        note = addLinks(links) ?: note
+    }
+
+    if (adding) {
+        AddServerScreen(onBack = { adding = false }, onSubmit = { addLinks(it) })
+        return
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         Text("السيرفرات", color = C.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp, bottom = 12.dp))
 
-        GlassButton("إضافة من الحافظة", brick = true, modifier = Modifier.fillMaxWidth()) { importFromClipboard() }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GlassButton("إضافة يدوياً", brick = true, modifier = Modifier.weight(1f)) { adding = true }
+            GlassButton("من الحافظة", brick = false, modifier = Modifier.weight(1f)) { importFromClipboard() }
+        }
         note?.let { Text(it, color = C.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
         Spacer(Modifier.height(12.dp))
 
         if (servers.isEmpty()) {
             Text(
-                "ما عندك سيرفرات بعد. انسخ رابط سيرفرك (vmess:// أو vless:// أو trojan://) ثم اضغط الزر فوق.",
+                "ما عندك سيرفرات بعد. اضغط \"إضافة يدوياً\" لإدخال بيانات السيرفر، أو انسخ رابطه (vmess:// أو vless:// أو trojan://) واضغط \"من الحافظة\".",
                 color = C.Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 24.dp)
             )
         }
