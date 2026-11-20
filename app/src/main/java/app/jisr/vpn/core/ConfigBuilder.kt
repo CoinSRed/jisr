@@ -6,9 +6,11 @@ import org.json.JSONObject
 /** يبني ملف إعدادات Xray (JSON) من سيرفر واحد. */
 object ConfigBuilder {
 
-    fun build(n: Node, dns: String): String {
+    fun build(n: Node, dns: String, logPath: String? = null): String {
         val root = JSONObject()
-        root.put("log", JSONObject().put("loglevel", "warning"))
+        val log = JSONObject().put("loglevel", "warning")
+        if (logPath != null) log.put("error", logPath) // أخطاء المحرك تُكتب في ملف نقرأه لاحقاً
+        root.put("log", log)
         root.put(
             "dns",
             JSONObject().put("servers", JSONArray().put(dns).put("1.1.1.1"))

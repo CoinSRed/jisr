@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import app.jisr.vpn.core.ConfigBuilder
 import app.jisr.vpn.core.LinkParser
+import app.jisr.vpn.core.LogParser
 import app.jisr.vpn.data.Prefs
 
 /** حالة الاتصال التي تراها الواجهة، تُحدَّث من بثّ الخدمة. */
@@ -49,7 +50,8 @@ object VpnController {
         val server = Prefs.servers.firstOrNull { it.id == Prefs.selectedId }
             ?: return "اختر سيرفراً أولاً من تبويب السيرفرات"
         val node = LinkParser.parse(server.link) ?: return "رابط السيرفر غير صالح"
-        val config = ConfigBuilder.build(node, Prefs.dns)
+        LogParser.clear(ctx)
+        val config = ConfigBuilder.build(node, Prefs.dns, LogParser.file(ctx).absolutePath)
         error = null
         status = "connecting"
         ctx.startService(

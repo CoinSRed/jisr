@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.net.TrafficStats
 import android.os.Process
+import app.jisr.vpn.core.DiagState
 import app.jisr.vpn.core.Diagnostics
 import app.jisr.vpn.core.LinkParser
 import app.jisr.vpn.core.NetworkInfo
@@ -66,8 +67,8 @@ fun HomeScreen(message: String?, onToggle: () -> Unit, onOpenServers: () -> Unit
     val secs = if (on && VpnController.since > 0) ((now - VpnController.since) / 1000).coerceAtLeast(0) else 0L
     val timer = "%02d:%02d:%02d".format(secs / 3600, (secs % 3600) / 60, secs % 60)
 
-    var report by remember { mutableStateOf<List<Finding>?>(null) }
-    var checking by remember { mutableStateOf(false) }
+    val report = DiagState.report
+    val checking = DiagState.running
 
     // نوع الشبكة (Wi-Fi / 4G / 5G)
     var net by remember { mutableStateOf("") }
@@ -221,11 +222,11 @@ fun HomeScreen(message: String?, onToggle: () -> Unit, onOpenServers: () -> Unit
         // المساعد الذكي
         Column(Modifier.fillMaxWidth().glass().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("المساعد الذكي", color = C.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            val r = report
+            val r = if (checking) null else report
             if (r == null) {
                 Text(
-                    "يفحص الشبكة والـDNS والسيرفر، ويشرح لك سبب أي مشكلة وكيف تحلها.",
-                    color = C.Muted, fontSize = 13.sp
+                    if (checking) "جاري تشخيص المشكلة..." else "يفحص الشبكة والـDNS والسيرفر وسجلات المحرك، ويشرح لك سبب أي مشكلة وكيف تحلها.",
+                    color = if (checking) C.Teal else C.Muted, fontSize = 13.sp
                 )
             } else {
                 r.forEach { f ->
@@ -252,11 +253,7 @@ fun HomeScreen(message: String?, onToggle: () -> Unit, onOpenServers: () -> Unit
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (!checking) {
-                    checking = true
-                    scope.launch {
-                        report = Diagnostics.run(ctx, server, VpnController.error)
-                        checking = false
-                    }
+                    scope.launch { DiagState.run(ctx, server, VpnController.error) }
                 }
             }
         }

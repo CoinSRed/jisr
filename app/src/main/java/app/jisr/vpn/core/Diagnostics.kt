@@ -12,7 +12,7 @@ import java.net.Socket
 
 enum class Level { OK, WARN, FAIL }
 
-data class Finding(val level: Level, val title: String, val detail: String)
+data class Finding(val level: Level, val title: String, val detail: String, val code: String = "")
 
 /**
  * المساعد الذكي: يفحص الشبكة والـDNS والسيرفر خطوة بخطوة، ويشرح السبب ويقترح الحل.
@@ -45,7 +45,8 @@ object Diagnostics {
             if (!hasInternet(ctx)) {
                 out += Finding(
                     Level.FAIL, "لا يوجد إنترنت",
-                    "تأكد من اتصال الواي فاي أو بيانات الجوال، وأن وضع الطيران مطفي."
+                    "تأكد من اتصال الواي فاي أو بيانات الجوال، وأن وضع الطيران مطفي.",
+                    "net"
                 )
                 return@withContext out
             }
@@ -59,7 +60,8 @@ object Diagnostics {
             if (!dnsOk) {
                 out += Finding(
                     Level.FAIL, "خادم DNS لا يستجيب",
-                    "غيّر خادم DNS من الإعدادات (جرّب 8.8.8.8 أو 9.9.9.9) ثم أعد المحاولة."
+                    "غيّر خادم DNS من الإعدادات (جرّب 8.8.8.8 أو 9.9.9.9) ثم أعد المحاولة.",
+                    "dns"
                 )
                 return@withContext out
             }
@@ -91,6 +93,8 @@ object Diagnostics {
                 }
             }
 
+            // سجلات المحرك: تعطي سبباً أدق (دخول خاطئ، مهلة، شهادة...)
+            LogParser.analyze(LogParser.tail(ctx))?.let { out += it }
             lastError?.let { out += explain(it) }
             out
         }

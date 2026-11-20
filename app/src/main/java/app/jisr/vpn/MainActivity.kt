@@ -110,6 +110,14 @@ private fun App() {
                 app.jisr.vpn.core.Diagnostics.tcpLatency(node.host, node.port, 2500)
             }
             misses = if (ms == null) misses + 1 else 0
+
+            // سجلات المحرك أثناء الاتصال: لو ظهر خطأ دخول صريح نقطع ونعرض السبب
+            val logF = app.jisr.vpn.core.LogParser.analyze(app.jisr.vpn.core.LogParser.tail(ctx))
+            if (logF != null && logF.code == "auth") {
+                message = logF.title + ". " + logF.detail
+                VpnController.stop(ctx)
+                return@LaunchedEffect
+            }
             if (misses >= 3) {
                 message = "انقطع الاتصال بالسيرفر، أحاول من جديد…"
                 VpnController.stop(ctx)
@@ -122,7 +130,33 @@ private fun App() {
 
     // إعادة الاتصال: 3 محاولات فاشلة على نفس السيرفر ثم الانتقال للتالي
     LaunchedEffect(failure) {
-        if (failure == 0 || !Prefs.smartSwitch) return@LaunchedEffect
+        if (failure == 0) return@LaunchedEffect
+
+        // تشخيص تلقائي عند أول فشل، ونعرض النتيجة قبل أي إعادة اتصال
+        if (attempts == 0) {
+            message = "جاري تشخيص المشكلة..."
+            val srv = Prefs.servers.firstOrNull { it.id == Prefs.selectedId }
+            app.jisr.vpn.core.DiagState.run(ctx, srv, VpnController.error)
+            val rep = app.jisr.vpn.core.DiagState.report.orEmpty()
+            val fails = rep.filter { it.level == app.jisr.vpn.core.Level.FAIL }
+
+            // لا إنترنت أو DNS معطّل: التبديل بين السيرفرات ما يفيد
+            val blocker = fails.firstOrNull { it.code == "net" || it.code == "dns" }
+            if (blocker != null) {
+                message = blocker.title + ". " + blocker.detail
+                return@LaunchedEffect
+            }
+            // بيانات الدخول خاطئة: إعادة المحاولة بنفس البيانات ما تفيد
+            val auth = rep.firstOrNull { it.code == "auth" }
+            if (auth != null) {
+                message = auth.title + ". " + auth.detail
+                return@LaunchedEffect
+            }
+            message = (fails.firstOrNull()?.let { it.title + ". " + it.detail } ?: "تم التشخيص") + " — أعيد المحاولة…"
+            kotlinx.coroutines.delay(2500)
+        }
+
+        if (!Prefs.smartSwitch) return@LaunchedEffect
         attempts += 1
         if (attempts < 3) {
             message = "فشل الاتصال، إعادة المحاولة ($attempts/3)…"
