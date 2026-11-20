@@ -8,6 +8,10 @@ object VpnProtocol {
     const val ACTION_STATUS = "app.jisr.vpn.action.STATUS"
 
     const val EXTRA_CONFIG = "config"
+    const val EXTRA_SSH = "ssh"
+
+    /** منفذ SOCKS المحلي الذي يفتحه نفق SSH ويمرّر له المحرك الحركة. */
+    const val SSH_LOCAL_PORT = 10808
     const val EXTRA_DNS = "dns"
     const val EXTRA_STATUS = "status"
     const val EXTRA_ERROR = "error"

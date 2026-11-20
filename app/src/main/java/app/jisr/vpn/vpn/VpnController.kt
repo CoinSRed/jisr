@@ -54,11 +54,18 @@ object VpnController {
         val config = ConfigBuilder.build(node, Prefs.dns, LogParser.file(ctx).absolutePath)
         error = null
         status = "connecting"
-        ctx.startService(
-            Intent(ctx, JisrVpnService::class.java)
-                .putExtra(VpnProtocol.EXTRA_CONFIG, config)
-                .putExtra(VpnProtocol.EXTRA_DNS, Prefs.dns)
-        )
+        val intent = Intent(ctx, JisrVpnService::class.java)
+            .putExtra(VpnProtocol.EXTRA_CONFIG, config)
+            .putExtra(VpnProtocol.EXTRA_DNS, Prefs.dns)
+        if (node.protocol == "ssh") {
+            val ssh = SshConfig(
+                host = node.host, port = node.port, user = node.user, password = node.id,
+                ws = node.network == "ws", tls = node.security == "tls",
+                sni = node.sni, path = node.path, hostHeader = node.hostHeader
+            )
+            intent.putExtra(VpnProtocol.EXTRA_SSH, ssh.toJson())
+        }
+        ctx.startService(intent)
         return null
     }
 

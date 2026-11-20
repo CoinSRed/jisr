@@ -1,5 +1,6 @@
 package app.jisr.vpn.core
 
+import app.jisr.vpn.vpn.VpnProtocol
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -11,10 +12,11 @@ object ConfigBuilder {
         val log = JSONObject().put("loglevel", "warning")
         if (logPath != null) log.put("error", logPath) // أخطاء المحرك تُكتب في ملف نقرأه لاحقاً
         root.put("log", log)
-        root.put(
-            "dns",
-            JSONObject().put("servers", JSONArray().put(dns).put("1.1.1.1"))
-        )
+
+        // SSH يمرّ عبر SOCKS محلي (TCP فقط)، فنستعمل DNS عبر TCP
+        val primaryDns = if (n.protocol == "ssh") "tcp://$dns" else dns
+        root.put("dns", JSONObject().put("servers", JSONArray().put(primaryDns).put(if (n.protocol == "ssh") "tcp://1.1.1.1" else "1.1.1.1")))
+
         root.put(
             "inbounds",
             JSONArray().put(
@@ -45,6 +47,22 @@ object ConfigBuilder {
     }
 
     private fun proxy(n: Node): JSONObject {
+        // SSH: النفق يعمل داخل التطبيق ويفتح SOCKS على 127.0.0.1، والمحرك يمرّر له الحركة
+        if (n.protocol == "ssh") {
+            return JSONObject()
+                .put("tag", "proxy")
+                .put("protocol", "socks")
+                .put(
+                    "settings",
+                    JSONObject().put(
+                        "servers",
+                        JSONArray().put(
+                            JSONObject().put("address", "127.0.0.1").put("port", VpnProtocol.SSH_LOCAL_PORT)
+                        )
+                    )
+                )
+        }
+
         val out = JSONObject().put("tag", "proxy").put("protocol", n.protocol)
         val settings = when (n.protocol) {
             "vless" -> {
@@ -68,6 +86,13 @@ object ConfigBuilder {
                     )
                 )
             }
+            "shadowsocks" -> JSONObject().put(
+                "servers",
+                JSONArray().put(
+                    JSONObject().put("address", n.host).put("port", n.port)
+                        .put("method", n.cipher).put("password", n.id)
+                )
+            )
             else -> JSONObject().put(
                 "servers",
                 JSONArray().put(

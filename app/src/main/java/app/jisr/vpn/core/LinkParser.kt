@@ -21,7 +21,8 @@ data class Node(
     val sid: String = "",
     val alterId: Int = 0,
     val cipher: String = "auto",
-    val serviceName: String = ""
+    val serviceName: String = "",
+    val user: String = ""
 )
 
 /** يقرأ روابط vmess:// و vless:// و trojan:// ويحوّلها إلى Node. */
@@ -32,6 +33,8 @@ object LinkParser {
             link.startsWith("vmess://") -> parseVmess(link)
             link.startsWith("vless://") -> parseUri(link, "vless")
             link.startsWith("trojan://") -> parseUri(link, "trojan")
+            link.startsWith("ss://") -> parseSs(link)
+            link.startsWith("ssh://") -> parseSsh(link)
             else -> null
         }
     } catch (e: Exception) {
@@ -65,6 +68,85 @@ object LinkParser {
             alterId = json.optString("aid").toIntOrNull() ?: 0,
             cipher = json.optString("scy").ifBlank { "auto" },
             serviceName = json.optString("path")
+        )
+    }
+
+    /** Shadowsocks: صيغة SIP002 (ss://base64(method:pass)@host:port) والصيغة القديمة. روابط الإضافات (plugin) غير مدعومة. */
+    private fun parseSs(link: String): Node? {
+        var rest = link.removePrefix("ss://")
+        val name = if (rest.contains("#")) URLDecoder.decode(rest.substringAfter("#"), "UTF-8") else ""
+        rest = rest.substringBefore("#")
+        if (rest.contains("?") && rest.substringAfter("?").contains("plugin")) return null
+        rest = rest.substringBefore("?").trimEnd('/')
+
+        val method: String
+        val password: String
+        val host: String
+        val port: Int
+        if (rest.contains("@")) {
+            var userInfo = rest.substringBeforeLast("@")
+            val hp = rest.substringAfterLast("@")
+            if (userInfo.contains("%")) userInfo = URLDecoder.decode(userInfo.replace("+", "%2B"), "UTF-8")
+            val decoded = if (userInfo.contains(":")) userInfo else decodeB64(userInfo)
+            method = decoded.substringBefore(":")
+            password = decoded.substringAfter(":", "")
+            host = hp.substringBeforeLast(":")
+            port = hp.substringAfterLast(":", "").toIntOrNull() ?: return null
+        } else {
+            val decoded = decodeB64(rest)
+            val at = decoded.lastIndexOf('@')
+            if (at < 0) return null
+            val up = decoded.substring(0, at)
+            val hp = decoded.substring(at + 1)
+            method = up.substringBefore(":")
+            password = up.substringAfter(":", "")
+            host = hp.substringBeforeLast(":")
+            port = hp.substringAfterLast(":", "").toIntOrNull() ?: return null
+        }
+        if (host.isBlank() || method.isBlank() || password.isBlank()) return null
+        return Node(
+            protocol = "shadowsocks",
+            name = name.ifBlank { "$host:$port" },
+            host = host,
+            port = port,
+            id = password,
+            cipher = method
+        )
+    }
+
+    /** SSH: ssh://user:pass@host:port?type=tcp|ws&security=none|tls&sni=..&path=..&host=..#name */
+    private fun parseSsh(link: String): Node? {
+        var rest = link.substringAfter("://")
+        val name = if (rest.contains("#")) URLDecoder.decode(rest.substringAfterLast("#"), "UTF-8") else ""
+        rest = rest.substringBefore("#")
+        val query = if (rest.contains("?")) rest.substringAfter("?") else ""
+        val authority = rest.substringBefore("?").trimEnd('/')
+        if (!authority.contains("@")) return null
+
+        val ui = authority.substringBeforeLast("@")
+        val hp = authority.substringAfterLast("@")
+        val user = URLDecoder.decode(ui.substringBefore(":"), "UTF-8")
+        val pass = URLDecoder.decode(ui.substringAfter(":", ""), "UTF-8")
+        val host = hp.substringBeforeLast(":")
+        val port = hp.substringAfterLast(":", "").toIntOrNull() ?: 22
+        if (host.isBlank() || user.isBlank()) return null
+
+        val q = query.split("&")
+            .filter { it.contains("=") }
+            .associate { it.substringBefore("=") to URLDecoder.decode(it.substringAfter("="), "UTF-8") }
+
+        return Node(
+            protocol = "ssh",
+            name = name.ifBlank { "$host:$port" },
+            host = host,
+            port = port,
+            id = pass,
+            user = user,
+            network = if (q["type"] == "ws") "ws" else "tcp",
+            security = if (q["security"] == "tls") "tls" else "none",
+            sni = q["sni"] ?: "",
+            path = q["path"] ?: "",
+            hostHeader = q["host"] ?: ""
         )
     }
 

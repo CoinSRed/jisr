@@ -59,7 +59,7 @@ fun ServersScreen(onPicked: () -> Unit) {
             LinkParser.parse(l)?.let { Server(UUID.randomUUID().toString(), it.name, l) }
         }
         if (added.isEmpty()) {
-            return "ما لقيت رابط صالح. الصيغ المدعومة: vmess:// و vless:// و trojan://"
+            return "ما لقيت رابط صالح. الصيغ المدعومة: vmess:// و vless:// و trojan:// و ss:// و ssh://"
         }
         servers = servers + added
         Prefs.servers = servers

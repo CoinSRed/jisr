@@ -58,6 +58,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
+    // عميل SSH (يُستعمل لنفق SSH)
+    implementation("com.github.mwiede:jsch:0.2.20")
+
     // محرك Xray (libv2ray.aar) يُحمَّل تلقائياً في خطوة البناء إلى app/libs
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
 }

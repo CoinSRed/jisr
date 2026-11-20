@@ -27,6 +27,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.jisr.vpn.core.LinkBuilder
@@ -43,13 +45,26 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
-private fun Field(label: String, value: String, number: Boolean = false, onChange: (String) -> Unit) {
+private fun Field(
+    label: String,
+    value: String,
+    number: Boolean = false,
+    secret: Boolean = false,
+    onChange: (String) -> Unit
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Uri),
+        visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = when {
+                secret -> KeyboardType.Password
+                number -> KeyboardType.Number
+                else -> KeyboardType.Uri
+            }
+        ),
         colors = fieldColors(),
         modifier = Modifier.fillMaxWidth()
     )
@@ -58,7 +73,7 @@ private fun Field(label: String, value: String, number: Boolean = false, onChang
 @Composable
 private fun Chips(title: String, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, color = C.Muted, fontSize = 13.sp)
+        if (title.isNotBlank()) Text(title, color = C.Muted, fontSize = 13.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { (value, label) ->
                 val sel = value == selected
@@ -88,7 +103,9 @@ fun AddServerScreen(onBack: () -> Unit, onSubmit: (List<String>) -> String?) {
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("443") }
-    var id by remember { mutableStateOf("") }
+    var id by remember { mutableStateOf("") }          // UUID أو كلمة المرور
+    var user by remember { mutableStateOf("") }        // SSH
+    var method by remember { mutableStateOf("aes-256-gcm") } // Shadowsocks
     var net by remember { mutableStateOf("ws") }
     var sec by remember { mutableStateOf("tls") }
     var sni by remember { mutableStateOf("") }
@@ -99,18 +116,51 @@ fun AddServerScreen(onBack: () -> Unit, onSubmit: (List<String>) -> String?) {
     var sid by remember { mutableStateOf("") }
     var pasted by remember { mutableStateOf("") }
 
+    val isSsh = proto == "ssh"
+    val isSs = proto == "shadowsocks"
+
+    fun selectProto(p: String) {
+        val wasOther = proto == "ssh" || proto == "shadowsocks"
+        proto = p
+        error = null
+        when (p) {
+            "ssh" -> {
+                net = "tcp"; sec = "none"; port = "22"
+            }
+            "shadowsocks" -> {
+                net = "tcp"; sec = "none"; port = "8388"
+            }
+            else -> {
+                if (wasOther) {
+                    net = "ws"; sec = "tls"; port = "443"
+                }
+                if (p == "trojan" && sec == "none") sec = "tls"
+                if (p != "vless" && sec == "reality") sec = "tls"
+            }
+        }
+    }
+
     fun saveManual() {
         val p = port.trim().toIntOrNull()
         when {
             host.isBlank() -> error = "اكتب عنوان السيرفر (Host)"
             p == null || p !in 1..65535 -> error = "المنفذ (Port) لازم يكون رقم صحيح"
-            id.isBlank() -> error = if (proto == "trojan") "اكتب كلمة المرور" else "اكتب المعرّف (UUID)"
+            isSsh && user.isBlank() -> error = "اكتب اسم المستخدم"
+            (isSsh || isSs || proto == "trojan") && id.isBlank() -> error = "اكتب كلمة المرور"
+            !isSsh && !isSs && proto != "trojan" && id.isBlank() -> error = "اكتب المعرّف (UUID)"
             sec == "reality" && pbk.isBlank() -> error = "Reality يحتاج المفتاح العام (Public Key)"
             else -> {
-                val link = LinkBuilder.build(
-                    proto, name.trim(), host.trim(), p, id.trim(), net, sec,
-                    sni.trim(), path.trim(), hostHeader.trim(), flow.trim(), pbk.trim(), sid.trim()
-                )
+                val link = when {
+                    isSsh -> LinkBuilder.ssh(
+                        name.trim(), host.trim(), p, user.trim(), id, net, sec,
+                        sni.trim(), path.trim(), hostHeader.trim()
+                    )
+                    isSs -> LinkBuilder.shadowsocks(name.trim(), host.trim(), p, method, id)
+                    else -> LinkBuilder.build(
+                        proto, name.trim(), host.trim(), p, id.trim(), net, sec,
+                        sni.trim(), path.trim(), hostHeader.trim(), flow.trim(), pbk.trim(), sid.trim()
+                    )
+                }
                 error = onSubmit(listOf(link))
                 if (error == null) onBack()
             }
@@ -145,39 +195,69 @@ fun AddServerScreen(onBack: () -> Unit, onSubmit: (List<String>) -> String?) {
             OutlinedTextField(
                 value = pasted,
                 onValueChange = { pasted = it },
-                label = { Text("vmess:// أو vless:// أو trojan:// (كل رابط في سطر)") },
+                label = { Text("vmess:// vless:// trojan:// ss:// ssh:// (كل رابط في سطر)") },
                 minLines = 5,
                 colors = fieldColors(),
                 modifier = Modifier.fillMaxWidth()
             )
             GlassButton("إضافة", brick = true, modifier = Modifier.fillMaxWidth()) { savePasted() }
         } else {
-            Chips("البروتوكول", listOf("vless" to "VLESS", "vmess" to "VMess", "trojan" to "Trojan"), proto) {
-                proto = it
-                if (it == "trojan" && sec == "none") sec = "tls"
-                if (it != "vless" && sec == "reality") sec = "tls"
-            }
+            Chips("البروتوكول", listOf("vless" to "VLESS", "vmess" to "VMess", "trojan" to "Trojan"), proto) { selectProto(it) }
+            Chips("", listOf("shadowsocks" to "Shadowsocks", "ssh" to "SSH"), proto) { selectProto(it) }
+
             Field("الاسم (اختياري)", name) { name = it }
             Field("العنوان (Host)", host) { host = it }
             Field("المنفذ (Port)", port, number = true) { port = it }
-            Field(if (proto == "trojan") "كلمة المرور" else "المعرّف (UUID)", id) { id = it }
 
-            Chips("نوع النقل", listOf("tcp" to "TCP", "ws" to "WebSocket", "grpc" to "gRPC"), net) { net = it }
+            if (isSsh) Field("اسم المستخدم", user) { user = it }
+            Field(
+                if (isSsh || isSs || proto == "trojan") "كلمة المرور" else "المعرّف (UUID)",
+                id,
+                secret = isSsh || isSs
+            ) { id = it }
 
-            val secOptions = buildList {
-                if (proto != "trojan") add("none" to "بدون")
-                add("tls" to "TLS")
-                if (proto == "vless") add("reality" to "Reality")
-            }
-            Chips("التشفير", secOptions, sec) { sec = it }
+            if (isSs) {
+                Chips(
+                    "طريقة التشفير",
+                    listOf("aes-256-gcm" to "AES-256", "aes-128-gcm" to "AES-128", "chacha20-ietf-poly1305" to "ChaCha20"),
+                    method
+                ) { method = it }
+            } else if (isSsh) {
+                Chips("نوع الاتصال", listOf("tcp" to "SSH مباشر", "ws" to "عبر WebSocket"), net) {
+                    net = it
+                    if (it == "ws") {
+                        sec = "tls"; port = "443"
+                    } else {
+                        sec = "none"; port = "22"
+                    }
+                }
+                if (net == "ws") {
+                    Chips("التشفير", listOf("none" to "بدون (80)", "tls" to "TLS (443)"), sec) {
+                        sec = it
+                        port = if (it == "tls") "443" else "80"
+                    }
+                    if (sec == "tls") Field("SNI (اختياري)", sni) { sni = it }
+                    Field("Host Header (اختياري)", hostHeader) { hostHeader = it }
+                    Field("المسار Path (اختياري)", path) { path = it }
+                }
+            } else {
+                Chips("نوع النقل", listOf("tcp" to "TCP", "ws" to "WebSocket", "grpc" to "gRPC"), net) { net = it }
 
-            if (sec != "none") Field("SNI", sni) { sni = it }
-            if (net == "ws" || net == "grpc") Field(if (net == "grpc") "اسم الخدمة (serviceName)" else "المسار (Path)", path) { path = it }
-            if (net == "ws") Field("Host Header (اختياري)", hostHeader) { hostHeader = it }
-            if (proto == "vless") Field("Flow (اختياري، مثل xtls-rprx-vision)", flow) { flow = it }
-            if (sec == "reality") {
-                Field("المفتاح العام (Public Key)", pbk) { pbk = it }
-                Field("Short ID (اختياري)", sid) { sid = it }
+                val secOptions = buildList {
+                    if (proto != "trojan") add("none" to "بدون")
+                    add("tls" to "TLS")
+                    if (proto == "vless") add("reality" to "Reality")
+                }
+                Chips("التشفير", secOptions, sec) { sec = it }
+
+                if (sec != "none") Field("SNI", sni) { sni = it }
+                if (net == "ws" || net == "grpc") Field(if (net == "grpc") "اسم الخدمة (serviceName)" else "المسار (Path)", path) { path = it }
+                if (net == "ws") Field("Host Header (اختياري)", hostHeader) { hostHeader = it }
+                if (proto == "vless") Field("Flow (اختياري، مثل xtls-rprx-vision)", flow) { flow = it }
+                if (sec == "reality") {
+                    Field("المفتاح العام (Public Key)", pbk) { pbk = it }
+                    Field("Short ID (اختياري)", sid) { sid = it }
+                }
             }
 
             GlassButton("حفظ السيرفر", brick = true, modifier = Modifier.fillMaxWidth()) { saveManual() }
@@ -185,8 +265,14 @@ fun AddServerScreen(onBack: () -> Unit, onSubmit: (List<String>) -> String?) {
 
         error?.let { Text(it, color = C.BrickLight, fontSize = 14.sp) }
 
+        if (isSsh && tab == 0) {
+            Text(
+                "SSH عادي بدون أي Payload. أول اتصال يحفظ بصمة السيرفر، وإذا تغيّرت لاحقاً يرفض الاتصال حمايةً لك.",
+                color = C.Muted, fontSize = 12.sp
+            )
+        }
         Text(
-            "ملاحظة: SSH و Shadowsocks غير مدعومين بعد في هذا الإصدار.",
+            "روابط Shadowsocks التي فيها plugin (مثل v2ray-plugin) غير مدعومة.",
             color = C.Muted, fontSize = 12.sp
         )
         Spacer(Modifier.height(24.dp))
